@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en" style="width:100%;height:100%;margin:0;padding:0;border:0;">
+<head>
+    <link rel='stylesheet' href='static/luckysheet/plugins/css/pluginsCss.css' />
+    <link rel='stylesheet' href='static/luckysheet/plugins/plugins.css' />
+    <link rel='stylesheet' href='static/luckysheet/css/luckysheet.css' />
+    <link rel='stylesheet' href='static/luckysheet/assets/iconfont/iconfont.css' />
+    <script src="static/luckysheet/plugins/js/plugin.js"></script>
+    <script src="static/luckysheet/luckysheet.umd.js"></script>
+    <script src="static/luckyexcel.umd.js"></script>
+    <script src="static/vue.js"></script>
+    <script src="static/element-ui/index.js"></script>
+    <script src="static/axios.min.js"></script>
+    <script src="static/vue-clipboard.min.js"></script>
+    <script src="static/vue-router.js"></script>
+    <script src="static/httpVueLoader.js"></script>
+    <script src="static/jszip.min.js"></script>
+    <script src="src/siYuanApi.js"></script>
+    <link rel="stylesheet" href="static/element-ui/theme-chalk/index.css">
+</head>
+<body>
+    <div id = 'app'>
+        <div v-if="需要重新设定路径">无法获取数据,或许可以尝试通过资源值为"widgets/cc-sy-luckysheet"的iframe块插入</div>
+            <el-row>  
+                <el-col :span="6">  
+                <el-button @click="保存表格数据()"
+                size="mini">
+                    保存
+                </el-button>
+                </el-col>
+                <el-col :span="6">  
+                    <el-button @click="重新加载表格数据()"
+                    size="mini">
+                        重新加载数据
+                    </el-button>
+                    </el-col>
+                <el-col :span="6">  
+                    <input 
+                    accept=".xlsx" 
+                    type="file" 
+                    ref="file" 
+                    @change="转化上传文件()"
+                    style="display:none" 
+                    size=mini
+                    />
+                        <el-button @click="点击上传窗口()" size="mini" >
+                        导入xlsx文件
+                        </el-button>
+                </el-col>
+               
+            </el-row>
+        <div>
+         <div id="luckysheet" ref="luckysheet" @click="聚焦()" style="margin:0px;padding:0px;position:absolute;width:100%;height:90%;left: 0px;top:60px;"></div>
+        </div>
+    </div>
+</body>
+<script>
+
+    Vue.use(httpVueLoader);
+
+  //  Vue.use(VueRouter);
+    var vm = new Vue({
+        el: "#app",
+        data(){
+            return{
+                表格文件地址:"",
+                表格文件数据:{},
+                主界面:{},
+                文档标题元素:{},
+                文档头图元素:{},
+                apitoken:"",
+                需要重新设定路径:false,
+                hosturl:"",
+                挂件自身元素:"",
+                挂件自身id:"",
+            }
+        },
+        components:{"cc-assets-selector":"url:components/cc-assets-selector.vue",},
+        mounted:async function() {
+            let that = this
+            that.hosturl = window.location.host
+            that.获取主界面()
+            that.获取挂件自身元素()
+            try{await that.重新加载表格数据()}
+            catch(e){that.初始化表格()}
+        },
+        methods:{
+            聚焦:function(){
+                this.$refs.luckysheet.focus()
+            },
+            点击上传窗口:function(){
+                this.$refs.file.click();
+            },
+            转化上传文件:function(){
+                console.log(event.target.files[0])
+                let reader =new FileReader()
+                let excel数据 = this.$refs.file.files[0]
+                reader.readAsDataURL(excel数据)
+                console.log(excel数据)
+                LuckyExcel.transformExcelToLucky(excel数据,
+                    function(exportJson, luckysheetfile){
+                                
+                    if(exportJson.sheets==null || exportJson.sheets.length==0){
+                        alert("仅支持.xlsx文件");
+                        return;
+                    }
+                    window.luckysheet.destroy();
+                    
+                    window.luckysheet.create({
+                        container: 'luckysheet', //luckysheet is the container id
+                        showinfobar:false,
+                        data:exportJson.sheets,
+                        title:exportJson.info.name,
+                        userInfo:exportJson.info.name.creator
+                    });
+
+                })
+                },
+            保存表格数据:async function(){
+                let that = this
+                console.log(luckysheet.getAllSheets())
+                this.表格文件数据=luckysheet.getAllSheets()
+                let 表格数据blob = new Blob([JSON.stringify(that.表格文件数据)],{type:'application/json'})
+                let 表格文件 = new File([表格数据blob],`dataof${this.挂件自身id}.json`,{lastModified:Date.now()})
+               
+                let data =  new FormData
+                data.append('assetsDirPath','/assets/')
+                data.append('file[]',表格文件)
+                let url = 'http://'+that.hosturl+'/api/asset/upload'
+                let filepath = ""
+                await fetch(url,{
+                    body: data,
+                    method:'POST',
+                    headers:{'Authorization': 'Token '+ that.apitoken },
+                }).then(
+                    function(response){
+                    console.log(response)
+                    return response.json()
+                    }
+                ).then(function(resData){
+                console.log(resData)
+                let succMap = resData['data']['succMap']
+                console.log(succMap)
+                for(item in succMap){
+                    filepath = filepath+succMap[item]
+                    console.log(filepath)
+                }
+                //that.挂件自身元素.setAttribute('custom-data-assets',filepath)
+                that.挂件自身元素.setAttribute('data-assets',filepath)
+                })
+                await 设置思源块属性(that.hosturl,that.apitoken,that.挂件自身id,'data-assets',filepath)
+            },
+         
+            获取主界面(){
+                let that = this
+                try{
+                that.主界面 = window.parent.document}
+                catch(e){this.需要重新设定路径=true}
+            },
+            获取挂件自身元素(){
+                let that =this
+                that.挂件自身元素 = self.frameElement.parentElement.parentElement
+                挂件iframe = self.frameElement
+                if(that.挂件自身元素){
+                    that.挂件自身id = that.挂件自身元素.getAttribute("data-node-id")
+                    挂件iframe.setAttribute("style",挂件iframe.getAttribute("style")+'border-left:none;border-right:none;')
+                    }
+                else{return null}
+            },
+            初始化表格(表格文件数据){
+                    //配置项
+                    let options = {
+                        container: 'luckysheet',
+                        showinfobar:false,
+                        lang:"zh",
+                        plugins:['chart'],
+
+                    }
+                    if (表格文件数据){
+                        options.data=表格文件数据
+                    }
+                    luckysheet.create(options)
+            },
+            重新加载表格数据:async function(){
+                let that =this
+                let filepath=this.挂件自身元素.getAttribute('data-assets')
+                let url = 'http://'+that.hosturl+'/'+filepath
+                await axios.get(url).then((res)=>{
+                    that.表格文件数据 = res.data
+                }) 
+                console.log(JSON.parse(JSON.stringify( that.表格文件数据)))
+                that.初始化表格(that.表格文件数据)
+
+            },
+        }
+        })
+</script>
+</html>
